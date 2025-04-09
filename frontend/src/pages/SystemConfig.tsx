@@ -1,178 +1,115 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
-interface Config {
-  ocr_confidence_threshold: number;
-  detection_timeout: number;
-  auto_save: boolean;
-  export_format: string;
-  export_quality: number;
-  debug_mode: boolean;
+interface SystemConfig {
+  status: string;
+  lightroom_connected: boolean;
+  ocr_status: boolean;
 }
 
 const SystemConfig: React.FC = () => {
-  const [config, setConfig] = useState<Config>({
-    ocr_confidence_threshold: 0.7,
-    detection_timeout: 30,
-    auto_save: true,
-    export_format: 'jpg',
-    export_quality: 90,
-    debug_mode: false
-  });
-  const [status, setStatus] = useState<string>('');
-  const [error, setError] = useState<string>('');
-
-  useEffect(() => {
-    fetchConfig();
-  }, []);
+  const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchConfig = async () => {
     try {
+      setLoading(true);
       const response = await axios.get('http://localhost:5000/api/config');
-      setConfig(response.data.data);
-      setError('');
+      setConfig(response.data);
+      setError(null);
     } catch (err) {
-      setError('Failed to fetch configuration');
+      setError('Failed to fetch system configuration');
       console.error('Error fetching config:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await axios.post('http://localhost:5000/api/config', config);
-      setStatus('Configuration saved successfully');
-      setError('');
-      setTimeout(() => setStatus(''), 3000);
-    } catch (err) {
-      setError('Failed to save configuration');
-      console.error('Error saving config:', err);
-    }
-  };
+  useEffect(() => {
+    fetchConfig();
+    // Poll for updates every 30 seconds
+    const interval = setInterval(fetchConfig, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const value = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
-    setConfig({
-      ...config,
-      [e.target.name]: value
-    });
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
+        <div className="relative py-3 sm:max-w-xl sm:mx-auto">
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
+        <div className="relative py-3 sm:max-w-xl sm:mx-auto">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong className="font-bold">Error!</strong>
+            <span className="block sm:inline"> {error}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">System Configuration</h2>
-      
-      {status && (
-        <div className="mb-4 p-4 bg-green-50 rounded-md flex items-center">
-          <CheckCircleIcon className="h-5 w-5 text-green-400 mr-2" />
-          <span className="text-green-700">{status}</span>
-        </div>
-      )}
+    <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
+      <div className="relative py-3 sm:max-w-xl sm:mx-auto">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-light-blue-500 shadow-lg transform -skew-y-6 sm:skew-y-0 sm:-rotate-6 sm:rounded-3xl"></div>
+        <div className="relative px-4 py-10 bg-white shadow-lg sm:rounded-3xl sm:p-20">
+          <div className="max-w-md mx-auto">
+            <div className="divide-y divide-gray-200">
+              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
+                <h2 className="text-3xl font-bold mb-8 text-gray-900">System Configuration</h2>
+                
+                {/* System Status */}
+                <div className="mb-6">
+                  <h3 className="text-xl font-semibold mb-2">System Status</h3>
+                  <div className="flex items-center">
+                    <div className={`h-3 w-3 rounded-full mr-2 ${config?.status === 'running' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="capitalize">{config?.status || 'Unknown'}</span>
+                  </div>
+                </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 rounded-md flex items-center">
-          <ExclamationCircleIcon className="h-5 w-5 text-red-400 mr-2" />
-          <span className="text-red-700">{error}</span>
-        </div>
-      )}
+                {/* Lightroom Connection */}
+                <div className="mb-6">
+                  <h3 className="text-xl font-semibold mb-2">Lightroom Connection</h3>
+                  <div className="flex items-center">
+                    <div className={`h-3 w-3 rounded-full mr-2 ${config?.lightroom_connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span>{config?.lightroom_connected ? 'Connected' : 'Disconnected'}</span>
+                  </div>
+                </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            OCR Confidence Threshold
-            <input
-              type="number"
-              name="ocr_confidence_threshold"
-              value={config.ocr_confidence_threshold}
-              onChange={handleChange}
-              step="0.1"
-              min="0"
-              max="1"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            />
-          </label>
-        </div>
+                {/* OCR Status */}
+                <div className="mb-6">
+                  <h3 className="text-xl font-semibold mb-2">OCR System</h3>
+                  <div className="flex items-center">
+                    <div className={`h-3 w-3 rounded-full mr-2 ${config?.ocr_status ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span>{config?.ocr_status ? 'Operational' : 'Not Working'}</span>
+                  </div>
+                </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Detection Timeout (seconds)
-            <input
-              type="number"
-              name="detection_timeout"
-              value={config.detection_timeout}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            />
-          </label>
+                {/* Refresh Button */}
+                <div className="mt-8">
+                  <button
+                    onClick={fetchConfig}
+                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full transition duration-300 ease-in-out transform hover:-translate-y-1"
+                  >
+                    <i className="fas fa-sync-alt mr-2"></i>
+                    Refresh Status
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Export Format
-            <select
-              name="export_format"
-              value={config.export_format}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            >
-              <option value="jpg">JPG</option>
-              <option value="png">PNG</option>
-              <option value="tiff">TIFF</option>
-            </select>
-          </label>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Export Quality
-            <input
-              type="number"
-              name="export_quality"
-              value={config.export_quality}
-              onChange={handleChange}
-              min="1"
-              max="100"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            />
-          </label>
-        </div>
-
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            name="auto_save"
-            checked={config.auto_save}
-            onChange={handleChange}
-            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-          />
-          <label className="ml-2 block text-sm text-gray-900">
-            Enable Auto Save
-          </label>
-        </div>
-
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            name="debug_mode"
-            checked={config.debug_mode}
-            onChange={handleChange}
-            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-          />
-          <label className="ml-2 block text-sm text-gray-900">
-            Debug Mode
-          </label>
-        </div>
-
-        <div className="pt-5">
-          <button
-            type="submit"
-            className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            Save Configuration
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 };
