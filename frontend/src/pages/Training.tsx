@@ -1,196 +1,198 @@
-import React, { useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { CloudArrowUpIcon, XCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import React, { useState, useRef } from 'react';
 import axios from 'axios';
 
-interface UploadedFile {
-  id: number;
-  name: string;
-  status: 'uploading' | 'success' | 'error';
+interface UploadStatus {
+  file: string;
+  status: 'pending' | 'uploading' | 'success' | 'error';
   progress: number;
   error?: string;
 }
 
 const Training: React.FC = () => {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploads, setUploads] = useState<UploadStatus[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map(file => ({
-      id: Date.now() + Math.random(),
-      name: file.name,
-      status: 'uploading' as const,
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(Array.from(e.target.files));
+    }
+  };
+
+  const handleFiles = async (files: File[]) => {
+    const newUploads = files.map(file => ({
+      file: file.name,
+      status: 'pending' as const,
       progress: 0
     }));
 
-    setFiles(prev => [...prev, ...newFiles]);
+    setUploads(prev => [...prev, ...newUploads]);
 
-    acceptedFiles.forEach((file, index) => {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const formData = new FormData();
       formData.append('file', file);
 
-      const config = {
-        onUploadProgress: (progressEvent: any) => {
-          const progress = (progressEvent.loaded / progressEvent.total) * 100;
-          setFiles(prev => prev.map(f => 
-            f.name === file.name ? { ...f, progress } : f
-          ));
-        }
-      };
+      try {
+        setUploads(prev => prev.map(upload => 
+          upload.file === file.name 
+            ? { ...upload, status: 'uploading' }
+            : upload
+        ));
 
-      axios.post('http://localhost:5000/api/upload', formData, config)
-        .then(response => {
-          setFiles(prev => prev.map(f => 
-            f.name === file.name 
-              ? { ...f, status: 'success' as const, progress: 100 } 
-              : f
-          ));
-        })
-        .catch(error => {
-          setFiles(prev => prev.map(f => 
-            f.name === file.name 
-              ? { 
-                  ...f, 
-                  status: 'error' as const, 
-                  error: error.response?.data?.message || 'Upload failed' 
-                } 
-              : f
-          ));
+        const response = await axios.post('http://localhost:5000/api/training/upload', formData, {
+          onUploadProgress: (progressEvent) => {
+            const progress = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 100));
+            setUploads(prev => prev.map(upload => 
+              upload.file === file.name 
+                ? { ...upload, progress }
+                : upload
+            ));
+          }
         });
-    });
-  }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png'],
-      'video/*': ['.mp4', '.mov']
+        setUploads(prev => prev.map(upload => 
+          upload.file === file.name 
+            ? { ...upload, status: 'success', progress: 100 }
+            : upload
+        ));
+      } catch (error) {
+        setUploads(prev => prev.map(upload => 
+          upload.file === file.name 
+            ? { 
+                ...upload, 
+                status: 'error', 
+                error: error instanceof Error ? error.message : 'Upload failed'
+              }
+            : upload
+        ));
+      }
     }
-  });
-
-  const removeFile = (id: number) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
   };
 
   return (
-    <div className="space-y-6">
-      {/* Upload Area */}
-      <div 
-        {...getRootProps()} 
-        className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors
-          ${isDragActive 
-            ? 'border-indigo-500 bg-indigo-50' 
-            : 'border-gray-300 hover:border-indigo-400'}`}
-      >
-        <input {...getInputProps()} />
-        <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
-        <p className="mt-2 text-sm font-medium text-gray-900">
-          Drag & drop files here, or click to select files
-        </p>
-        <p className="mt-1 text-xs text-gray-500">
-          Support for JPG, PNG, MP4, and MOV files
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
+      <div className="relative py-3 sm:max-w-xl sm:mx-auto w-full px-4 sm:px-0">
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 shadow-lg transform -skew-y-6 sm:skew-y-0 sm:-rotate-6 sm:rounded-3xl"></div>
+        <div className="relative bg-white shadow-lg sm:rounded-3xl px-4 py-10 sm:p-20">
+          <div className="max-w-md mx-auto">
+            <div className="divide-y divide-gray-200">
+              <div className="py-8 text-base leading-6 space-y-4 text-gray-700 sm:text-lg sm:leading-7">
+                <h2 className="text-3xl font-bold mb-8 text-gray-900">Training Data Upload</h2>
 
-      {/* File List */}
-      {files.length > 0 && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <ul className="divide-y divide-gray-200">
-            {files.map(file => (
-              <li key={file.id} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center min-w-0 flex-1">
-                    {file.status === 'success' && (
-                      <CheckCircleIcon className="h-5 w-5 text-green-500 mr-3" />
-                    )}
-                    {file.status === 'error' && (
-                      <XCircleIcon className="h-5 w-5 text-red-500 mr-3" />
-                    )}
-                    {file.status === 'uploading' && (
-                      <div className="h-5 w-5 mr-3">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {file.name}
-                      </p>
-                      {file.status === 'error' && (
-                        <p className="text-sm text-red-500">{file.error}</p>
-                      )}
+                {/* Upload Area */}
+                <div
+                  className={`relative border-2 border-dashed rounded-lg p-8 text-center ${
+                    dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+                  }`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,video/*"
+                    onChange={handleFileInput}
+                    className="hidden"
+                  />
+
+                  <div className="space-y-4">
+                    <i className="fas fa-cloud-upload-alt text-4xl text-gray-400"></i>
+                    <div className="text-lg">
+                      Drag and drop your files here, or{' '}
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-blue-500 hover:text-blue-600"
+                      >
+                        browse
+                      </button>
                     </div>
-                  </div>
-                  
-                  <div className="ml-4 flex-shrink-0">
-                    {file.status === 'uploading' && (
-                      <span className="text-sm font-medium text-gray-900">
-                        {Math.round(file.progress)}%
-                      </span>
-                    )}
-                    <button
-                      onClick={() => removeFile(file.id)}
-                      className="ml-4 text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                    >
-                      Remove
-                    </button>
+                    <p className="text-sm text-gray-500">
+                      Supported formats: Images (JPG, PNG) and Videos (MP4)
+                    </p>
                   </div>
                 </div>
-                
-                {file.status === 'uploading' && (
-                  <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
-                    <div
-                      className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${file.progress}%` }}
-                    ></div>
+
+                {/* Upload Status List */}
+                {uploads.length > 0 && (
+                  <div className="mt-8">
+                    <h3 className="text-xl font-semibold mb-4">Uploads</h3>
+                    <div className="space-y-4">
+                      {uploads.map((upload, index) => (
+                        <div key={index} className="bg-gray-50 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium truncate">{upload.file}</span>
+                            <span className={`text-sm ${
+                              upload.status === 'success' ? 'text-green-500' :
+                              upload.status === 'error' ? 'text-red-500' :
+                              'text-blue-500'
+                            }`}>
+                              {upload.status === 'success' ? (
+                                <i className="fas fa-check"></i>
+                              ) : upload.status === 'error' ? (
+                                <i className="fas fa-times"></i>
+                              ) : (
+                                `${upload.progress}%`
+                              )}
+                            </span>
+                          </div>
+                          
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${
+                                upload.status === 'success' ? 'bg-green-500' :
+                                upload.status === 'error' ? 'bg-red-500' :
+                                'bg-blue-500'
+                              }`}
+                              style={{ width: `${upload.progress}%` }}
+                            ></div>
+                          </div>
+
+                          {upload.error && (
+                            <p className="text-sm text-red-500 mt-2">{upload.error}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
-      {/* Training History */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Training History</h3>
-        <div className="border rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  File Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Upload Date
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {files.filter(f => f.status === 'success').map(file => (
-                <tr key={file.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {file.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {file.name.split('.').pop()?.toUpperCase()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                      Completed
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date().toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                {/* Instructions */}
+                <div className="mt-8 bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-semibold mb-2">Training Guidelines</h4>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-2">
+                    <li>Upload high-quality images or videos for better training results</li>
+                    <li>Include a variety of lighting conditions and subjects</li>
+                    <li>Ensure files are in supported formats (JPG, PNG for images; MP4 for videos)</li>
+                    <li>Maximum file size: 50MB per file</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
